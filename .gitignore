@@ -6,3 +6,4 @@ pbf2csv.py
 dp.py
 philippines-latest.osm.pbf
 offline_locations.csv
+/cache/*
