@@ -26,7 +26,7 @@ class GPSLocator:
 
 	def connect(self):
 		"""Connect to GPSD service"""
-		self.session = gps.gps(mode=gps.WATCH_ENABLE)
+		self.session = gps.gps(mode=gps.WATCH_ENABLE | gps.WATCH_NEWSTYLE)
 		return self
 
 	def disconnect(self):
@@ -50,12 +50,12 @@ class GPSLocator:
 			try:
 				report = self.session.next()
 				if report['class'] == 'TPV':
-					lat = getattr(report, 'lat', None)
-					lon = getattr(report, 'lon', None)
+					lat = report.get('lat', None)
+					lon = report.get('lon', None)
 					if lat is not None and lon is not None:
-						return (lat, lon)
+						return lat, lon
 			except (StopIteration, KeyError):
-				time.sleep(1)
+				time.sleep(0.5)
 		return None
 
 	def get_address(self, coordinates: Tuple[float, float]) -> Optional[Dict]:
