@@ -8,6 +8,7 @@ import json
 import RPi.GPIO as GPIO
 import serial
 import cv2
+import numpy as np
 
 from mod.GP_s import get_current_location_info
 from mod.voiice import listen_for_command
@@ -23,6 +24,10 @@ engine = pyttsx3.init()
 detection_engine = None
 crowd_monitor = CrowdMonitor()
 GRAPH_HOPPER_URL = "http://localhost:8989/route"
+
+# Camera config
+ESP32_CAM_URL = "http://192.168.4.2/stream"
+USE_ESP32_CAM = True
 
 # GPIO setup
 BUTTON_INCREASE = 17
@@ -107,29 +112,16 @@ def gps_and_voice():
 
 
 def run_detection():
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        print("Camera not accessible")
-        return
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            continue
-        detections = detection_engine.process_video_frame(frame)
-
-        # Add direction info based on ROI (left/right)
-        img_width = frame.shape[1]
-        for det in detections:
-            bbox = det["bbox"]
-            x_center = (bbox[0] + bbox[2]) / 2
-            det["direction"] = "left" if x_center < img_width / 2 else "right"
-
-        if not halt_announcements:
-            detection_engine.on_detect(detections)
-        crowd_monitor.update_detection_time()
-        crowd_monitor.crowd_analysis(detections)
-
+    global detection_engine
+    visualizer = NanoDetVisualizer("config/nanodet.yaml", "model/nanodet.pth")
+    visualizer.on_detect = lambda dets: detection_engine.on_detect(dets) if detection_engine else None
+    visualizer.process_camera(
+        url=ESP32_CAM_URL if USE_ESP32_CAM else 0,
+        on_detect=lambda dets: [
+            crowd_monitor.update_detection_time(),
+            crowd_monitor.crowd_analysis(dets)
+        ]
+    )
 
 def monitor_inactivity():
     while True:
@@ -233,7 +225,7 @@ def start_all():
     set_emergency_contact()
 
     detection_engine = NanoDetDetector("config/nanodet.yaml", "model/nanodet.pth")
-    detection_engine.on_detect = lambda dets: None  # Can customize as needed
+    detection_engine.on_detect = lambda dets: None
 
     threads = [
         threading.Thread(target=gps_and_voice),
