@@ -2,7 +2,7 @@
 
 import requests
 
-API_KEY = "YOUR_OPENCAGE_API_KEY"  # Replace this with your real API key
+API_KEY = "a35ee41da1454752bbb1e83955cdcbad"  # Replace this with your real API key
 
 
 def geocode_opencage(address):
