@@ -1,8 +1,9 @@
+import os
 import cv2
 import time
 from typing import Union, Optional, List, Dict, Tuple, Callable
 import numpy as np
-
+import logging
 from asset.Headless import NanoDetDetector
 
 
@@ -14,6 +15,22 @@ class NanoDetVisualizer(NanoDetDetector):
 
     def __init__(self, config_path: str, model_path: str, device: str = "cpu"):
         super().__init__(config_path, model_path, device)
+
+
+    @staticmethod
+    def is_camera_available(url, timeout=3) -> bool:
+        cap = cv2.VideoCapture(url)
+        start = time.time()
+        while not cap.isOpened() and time.time() - start < timeout:
+            time.sleep(0.2)
+        available = cap.isOpened()
+        cap.release()
+        return available
+
+    @staticmethod
+    def is_display_available() -> bool:
+        return "DISPLAY" in os.environ
+
 
     def visualize(self, img: np.ndarray, detections: List[Dict], score_threshold: float = 0.35) -> np.ndarray:
         result_img = img.copy()
@@ -81,52 +98,53 @@ class NanoDetVisualizer(NanoDetDetector):
             log_file: Optional[str] = "detections.log",
             on_detect: Optional[Callable[[List[Dict]], None]] = None
     ) -> None:
+        if not self.is_camera_available(url):
+            logging.error(f"Camera {url} not available. Skipping detection.")
+            return
+
+        display_enabled = self.is_display_available()
         cap = cv2.VideoCapture(url)
         if not cap.isOpened():
             raise RuntimeError(f"Could not open camera {url}")
 
-        # Create log file if specified
-        log_fp = None
-        if log_file:
-            log_fp = open(log_file, "w", encoding="utf-8")
-            print(f"Logging detections to {log_file}...")
-
-        print(f"Processing camera feed... Press '{chr(exit_key)}' to quit.")
+        log_fp = open(log_file, "w", encoding="utf-8") if log_file else None
+        logging.info(f"Logging detections to {log_file}...")
 
         while True:
             ret, frame = cap.read()
-            if not ret:
-                print("Failed to capture frame")
-                break
+            if not cap.read()[0]:
+                logging.warning("Failed to capture frame, retrying...")
+                cap.release()
+                time.sleep(2)
+                cap = cv2.VideoCapture(url)
+                print(f"[{time.strftime('%H:%M:%S')}] [ERROR] Camera feed unavailable.")
+                continue
 
             try:
                 detections, visualized_frame = self.detect_and_visualize(frame, score_threshold)
                 detected_names = set(det['class_name'] for det in detections)
 
-                # Log detections to file
-                if detections and log_fp:
-                    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-                    log_fp.write(f"{timestamp}: {', '.join(detected_names)}\n")
-                    log_fp.flush()
-
                 if detections:
-                    print("Detected:", ", ".join(detected_names))
+                    log_line = f"{time.strftime('%Y-%m-%d %H:%M:%S')}: {', '.join(detected_names)}"
+                    if log_fp:
+                        log_fp.write(log_line + "\n")
+                        log_fp.flush()
+                    logging.info(log_line)
                     if on_detect:
                         on_detect(detections)
 
-                # Display the frame with detections
-                cv2.imshow(window_name, visualized_frame)
+                if display_enabled:
+                    cv2.imshow(window_name, visualized_frame)
+                    if cv2.waitKey(1) & 0xFF == exit_key:
+                        break
 
             except Exception as e:
-                print(f"Error during detection: {e}")
-                # Still show the original frame even if detection fails
-                cv2.imshow(window_name, frame)
-
-            # Check for exit key
-            if cv2.waitKey(1) & 0xFF == exit_key:
-                break
+                logging.error(f"Error during detection: {e}")
+                if display_enabled:
+                    pass
 
         cap.release()
         if log_fp:
             log_fp.close()
-        cv2.destroyAllWindows()
+        if display_enabled:
+            cv2.destroyAllWindows()

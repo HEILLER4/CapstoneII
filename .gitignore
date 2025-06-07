@@ -7,3 +7,13 @@ dp.py
 philippines-latest.osm.pbf
 offline_locations.csv
 /cache/*
+/tools/*
+esp_serv.py
+encrpted_api.key
+secret.key
+boot_setup.py
+sever.py
+supervise.py
+vesa.py
+Xample.py
+/misc/*
